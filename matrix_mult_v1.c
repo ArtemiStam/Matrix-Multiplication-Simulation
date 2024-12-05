@@ -55,53 +55,54 @@ void load_sparse_matrix(int8_t sparse[4][2], int8_t metadata[4][2], int rs1, int
     }
 }
 
-//void reset_accumulator()
-void print_matrix(int **matrix, int rows, int cols);
-
 void accelerator_unit(int32_t instr) {
     static int8_t sparse[4][2], meta_data[4][2], dense[4][4];
     static int32_t ACC[4][4];
-    static int8_t opcode, rs1, rs2, funct3;
+    int8_t opcode, rs1, rs2, rd, funct3, funct7, i;
+    int64_t wr_back_data;
     
-    opcode = instr & 127;       //mask is 127=2^7-1 because opcode is 7bits long
-    funct3 = (instr >> 12) & 7; //mask is 7=2^3-1 because funct3 is 3bits long
-    rs1 = (instr >> 15) & 31;   //mask is 31=2^5-1 because rs1 is 5bits long
-    rs2 = (instr >> 20) & 31;   //mask is 31=2^5-1 because rs2 is 5bits long
+    opcode = instr & 127;           //mask is 127=2^7-1 because opcode is 7bits long
+    rd = (instr >> 7) & 31;         //mask is 31=2^5-1 because rd is 5bits long
+    funct3 = (instr >> 12) & 7;     //mask is 7=2^3-1 because funct3 is 3bits long
+    rs1 = (instr >> 15) & 31;       //mask is 31=2^5-1 because rs1 is 5bits long
+    rs2 = (instr >> 20) & 31;       //mask is 31=2^5-1 because rs2 is 5bits long
+    funct7 = (instr >> 25) & 127;   //mask is 127=2^7-1 because funct7 is 7bits long
+
 
     //printf("HERE: opcode: %d funct3: %d rs1: %d rs2: %d\n", opcode, funct3, rs1, rs2);
     if (opcode == OPCODE) {
         switch (funct3) {
             case LOAD_DENSE:
                 load_dense_matrix(dense, rs1, rs2); 
-                for (int i = 0; i < 4; i++)
+                /*for (int i = 0; i < 4; i++)
                 {
                     for (int j = 0; j < 4; j++)
                     {
                         printf("%d ", dense[i][j]);
                     }
                     printf("\n");
-                }
+                }*/
                 break;
 
             case LOAD_SPARSE:
                 load_sparse_matrix(sparse, meta_data, rs1, rs2);
-                for (int i = 0; i < 4; i++)
+                /*for (int i = 0; i < 4; i++)
                 {
                     for (int j = 0; j < 2; j++)
                     {
                         printf("%d ", sparse[i][j]);
                     }
                     printf("\n");
-                }
+                }*/
 
-                for (int i = 0; i < 4; i++)
+                /*for (int i = 0; i < 4; i++)
                 {
                     for (int j = 0; j < 2; j++)
                     {
                         printf("%d ", meta_data[i][j]);
                     }
                     printf("\n");
-                }
+                }*/
 
                 for (int i = 0; i < 4; i++) {  // Rows in the current block
                     for (int j = 0; j < 4; j++) {  // Columns in the current block
@@ -111,14 +112,14 @@ void accelerator_unit(int32_t instr) {
                     }
                 }
 
-                for (int i = 0; i < 4; i++)
+                /*for (int i = 0; i < 4; i++)
                 {
                     for (int j = 0; j < 4; j++)
                     {
                         printf("%d ", ACC[i][j]);
                     }
                     printf("\n");
-                }
+                }*/
                 break;
 
             case RESET_ACC:
@@ -126,17 +127,40 @@ void accelerator_unit(int32_t instr) {
                     memset(ACC[i], 0, 4*sizeof(int32_t));
                 }
 
-                for (int i = 0; i < 4; i++)
+                /*for (int i = 0; i < 4; i++)
                 {
                     for (int j = 0; j < 4; j++)
                     {
                         printf("%d ", ACC[i][j]);
                     }
                     printf("\n");
-                }
+                }*/
                 break;
 
             case STORE_ACC:
+                wr_back_data = 0;
+                i = 0; //means its is the first 2 indexes of ACC
+                if (funct7 <= 6) {
+                    i = 1;
+                } else if (funct7 <= 10) {
+                    i = 2;
+                } else if (funct7 <= 14) {
+                    i = 3;
+                }
+
+                if (funct7 % 4 == 0)
+                {
+                    //printf("ACC1: %d"ACC2 %d\n, );
+                    printf("ACC: %d %d\n", ACC[i][0], ACC[i][1]);
+
+                    wr_back_data = (wr_back_data + ACC[i][0]) << 32;
+                    wr_back_data = wr_back_data + ACC[i][1];
+                } else {
+                    wr_back_data = (wr_back_data + ACC[i][2]) << 32;
+                    wr_back_data = wr_back_data + ACC[i][3];
+                }
+                //printf("%d ", wr_back_data);
+                REG_FILE[rd] = wr_back_data;
                 break;
         }
 
@@ -163,9 +187,9 @@ int main(void) {
     int8_t sparse[8][4]={{1,4,5,5},{4,8,5,6},{5,7,9,4},{4,6,9,3},{6,5,8,3},{6,5,8,3},{6,5,8,3},{6,5,8,3}};  //Pressumed matrix is pre-compressed
     int8_t dense[8][8]={{1,4,5,6,2,8,8,3},{7,9,6,8,5,8,7,8},{3,4,5,6,8,7,5,3},{1,4,5,6,2,8,8,3},{7,9,6,8,5,8,7,8},{3,4,5,6,8,7,5,3},{1,4,5,6,2,8,8,3},{7,9,6,8,5,8,7,8}};
     int8_t metadata[8][4] = {{0,2,1,2},{2,3,1,2},{0,3,2,3},{0,2,2,3},{1,3,0,2},{2,3,0,1},{1,2,1,2},{2,3,1,2}};
-    int32_t final[8][8] = {{0},{0},{0},{0},{0},{0},{0},{0}}, final_test[8][8] = {{33,60,75,90,84,111,93,45},{41,92,115,138,100,175,157,69},{49,120,129,158,62,200,196,95},{52,103,113,138,59,170,155,81},{106,158,124,160,86,179,162,136},{88,128,118,148,122,167,141,106},{84,118,116,144,140,163,131,96},{50,88,110,132,128,162,134,66}};
+    int32_t final[8][8] = {{0},{0},{0},{0},{0},{0},{0},{0}}, instr, final_test[8][8] = {{33,60,75,90,84,111,93,45},{41,92,115,138,100,175,157,69},{49,120,129,158,62,200,196,95},{52,103,113,138,59,170,155,81},{106,158,124,160,86,179,162,136},{88,128,118,148,122,167,141,106},{84,118,116,144,140,163,131,96},{50,88,110,132,128,162,134,66}};
     int B=4, M=8, K=8, N=8; //B is the block dimensions, M is the num of sparse matrix rows, K is the num of sparse columns(un-compressed) and dense columns, N is the num of dense columns.
-    int rs1, rs2;
+    int rs1, rs2, rd;
 
 
     /*Call nullifying instr to initialize the accelerator accumulators*/
@@ -228,9 +252,20 @@ int main(void) {
               1. For every accumulator call instr that saves two accumulators(32b + 32b = 64b) column-wise to a register
               2. Call nullifying instr for accelerator accumulators
             */
-            rs1=14;
-            rs2=15;
-
+            rd = 14; 
+            for (int i = ii; i < MIN(ii + B, M); i++)
+            {
+                for (int j = jj; j < MIN(jj + B, N); j+=2)
+                {
+                    instr = 0;
+                    instr = (instr + (i-ii)*4+(j-jj)) << 13; //is funct7
+                    instr = ((((instr + 3) << 5) + rd) << 7) + 11; 
+                    //printf("HEREEEEEEE: %d ", instr);
+                    accelerator_unit(instr);
+                    final[i][j] = REG_FILE[rd] >> 32;
+                    final[i][j+1] = REG_FILE[rd] & 4294967295;
+                }
+            }
             
             accelerator_unit(0b0001011); //reset accumulator for new block
         }
@@ -240,6 +275,16 @@ int main(void) {
             2. Call nullifying instr for accelerator accumulators
         */
     }
+
+    for (int i = 0; i < 8; i++)
+    {
+        for (int j = 0; j < 8; j++)
+        {
+            printf("%6.2d ", final[i][j]);
+        }
+        printf("\n");
+    }
+    printf("\n");
     
     return 0;
 }
