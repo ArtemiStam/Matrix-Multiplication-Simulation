@@ -140,26 +140,22 @@ void accelerator_unit(int32_t instr) {
             case STORE_ACC:
                 wr_back_data = 0;
                 i = 0; //means its is the first 2 indexes of ACC
-                if (funct7 <= 6) {
+                if (funct7 >= 4 & funct7 <= 6) {
                     i = 1;
-                } else if (funct7 <= 10) {
+                } else if (funct7 >= 8 & funct7 <= 10) {
                     i = 2;
-                } else if (funct7 <= 14) {
+                } else if (funct7 >= 12 & funct7 <= 14) {
                     i = 3;
                 }
 
                 if (funct7 % 4 == 0)
                 {
-                    //printf("ACC1: %d"ACC2 %d\n, );
-                    printf("ACC: %d %d\n", ACC[i][0], ACC[i][1]);
-
                     wr_back_data = (wr_back_data + ACC[i][0]) << 32;
                     wr_back_data = wr_back_data + ACC[i][1];
                 } else {
                     wr_back_data = (wr_back_data + ACC[i][2]) << 32;
                     wr_back_data = wr_back_data + ACC[i][3];
                 }
-                //printf("%d ", wr_back_data);
                 REG_FILE[rd] = wr_back_data;
                 break;
         }
@@ -260,7 +256,6 @@ int main(void) {
                     instr = 0;
                     instr = (instr + (i-ii)*4+(j-jj)) << 13; //is funct7
                     instr = ((((instr + 3) << 5) + rd) << 7) + 11; 
-                    //printf("HEREEEEEEE: %d ", instr);
                     accelerator_unit(instr);
                     final[i][j] = REG_FILE[rd] >> 32;
                     final[i][j+1] = REG_FILE[rd] & 4294967295;
@@ -269,11 +264,6 @@ int main(void) {
             
             accelerator_unit(0b0001011); //reset accumulator for new block
         }
-        //accelerator_unit(0b0001011);
-        /*When the block of the sparse matrix changes row-wise we also need to nullify the changes and save the previous accumulator values
-            1. For every accumulator call instr that saves two accumulators(32b + 32b = 64b) column-wise to a register
-            2. Call nullifying instr for accelerator accumulators
-        */
     }
 
     for (int i = 0; i < 8; i++)
