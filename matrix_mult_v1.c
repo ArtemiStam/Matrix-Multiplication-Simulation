@@ -245,10 +245,9 @@ void matrix_mult(int B, int M, int K, int N, int8_t sparse[M][K/2], int8_t dense
 
 void matrix_mult_accelerated(int B, int M, int K, int N, int8_t sparse[M][K/2], int8_t dense[K][N], int8_t metadata[M][K/2]) {
     int rs1, rs2, rd;
-    int32_t final[8][8] = {{0},{0},{0},{0},{0},{0},{0},{0}}, instr; 
+    int32_t final[8][8] = {{0},{0},{0},{0},{0},{0},{0},{0}}; 
     int64_t row1, row2, row3, row4;
 
-    //accelerator_unit(0b0001011);
     asm(".word 0b00000000000000000000000000001011"); //initialize the accelerator accumulators to zero
 
     // Perform blocked multiplication row by row for blocks in row-major order.
@@ -264,11 +263,8 @@ void matrix_mult_accelerated(int B, int M, int K, int N, int8_t sparse[M][K/2], 
                 
                 REG_FILE[rs1] = ((row1 << 32) ^ row2); //rows 1 and 2 of dense go on rs1
                 REG_FILE[rs2] = ((row3 << 32) ^ row4); //rows 3 and 4 of dense go on rs2
-                //asm("0000000 %1 %0 001000000001011" :: "r" (REG_FILE[rs2]), "r" (REG_FILE[rs1]));
-                //asm(LOAD_DENSE_INSTR(REG_FILE[rs1], REG_FILE[rs2]));
-                //asm volatile("0001011 x0, %0, %1" :: "r" (REG_FILE[rs2]), "r" (REG_FILE[rs1]));
+            
                 asm volatile(".insn r 0b0001011, 0b001, 0, x0, %1, %0" :: "r" (REG_FILE[rs2]), "r" (REG_FILE[rs1]));
-                //accelerator_unit(0b00000000101101010001000000001011); // funct7:0 rs2:11 rs1:10 funct3:1 rd:0 opcode:11
 
                 rs1 = 12;
                 rs2 = 13;
@@ -288,6 +284,7 @@ void matrix_mult_accelerated(int B, int M, int K, int N, int8_t sparse[M][K/2], 
             }
             
             rd = 14; 
+            //Get the first row of the accumulator and put it inside the first row of the corresponding final block
             asm volatile(".insn r 0b0001011, 0b011, 0b0000000, %0, x0, x0" : "=r" (REG_FILE[rd]) :);
             final[ii][jj] = REG_FILE[rd] >> 32;
             final[ii][jj+1] = REG_FILE[rd] & 4294967295;
@@ -295,6 +292,7 @@ void matrix_mult_accelerated(int B, int M, int K, int N, int8_t sparse[M][K/2], 
             final[ii][jj+2] = REG_FILE[rd] >> 32;
             final[ii][jj+3] = REG_FILE[rd] & 4294967295;
 
+            //Get the second row of the accumulator and put it inside the second row of the corresponding final block
             asm volatile(".insn r 0b0001011, 0b011, 0b0000100, %0, x0, x0" : "=r" (REG_FILE[rd]) :);
             final[ii+1][jj] = REG_FILE[rd] >> 32;
             final[ii+1][jj+1] = REG_FILE[rd] & 4294967295;
@@ -302,6 +300,7 @@ void matrix_mult_accelerated(int B, int M, int K, int N, int8_t sparse[M][K/2], 
             final[ii+1][jj+2] = REG_FILE[rd] >> 32;
             final[ii+1][jj+3] = REG_FILE[rd] & 4294967295;
 
+            //Get the third row of the accumulator and put it inside the third row of the corresponding final block
             asm volatile(".insn r 0b0001011, 0b011, 0b0001000, %0, x0, x0" : "=r" (REG_FILE[rd]) :);
             final[ii+2][jj] = REG_FILE[rd] >> 32;
             final[ii+2][jj+1] = REG_FILE[rd] & 4294967295;
@@ -309,26 +308,14 @@ void matrix_mult_accelerated(int B, int M, int K, int N, int8_t sparse[M][K/2], 
             final[ii+2][jj+2] = REG_FILE[rd] >> 32;
             final[ii+2][jj+3] = REG_FILE[rd] & 4294967295;
 
+            //Get the fourth row of the accumulator and put it inside the fourth row of the corresponding final block
             asm volatile(".insn r 0b0001011, 0b011, 0b0001100, %0, x0, x0" : "=r" (REG_FILE[rd]) :);
             final[ii+3][jj] = REG_FILE[rd] >> 32;
             final[ii+3][jj+1] = REG_FILE[rd] & 4294967295;
             asm volatile(".insn r 0b0001011, 0b011, 0b0001110, %0, x0, x0" : "=r" (REG_FILE[rd]) :);
             final[ii+3][jj+2] = REG_FILE[rd] >> 32;
             final[ii+3][jj+3] = REG_FILE[rd] & 4294967295;
-            
-            /*for (int i = ii; i < MIN(ii + B, M); i++)
-            {
-                for (int j = jj; j < MIN(jj + B, N); j+=2)
-                {
-                    instr = 0;
-                    instr = (instr + (i-ii)*4+(j-jj)) << 13; //is funct7
-                    instr = ((((instr + 3) << 5) + rd) << 7) + 11; 
-                    accelerator_unit(instr);
-                    final[i][j] = REG_FILE[rd] >> 32;
-                    final[i][j+1] = REG_FILE[rd] & 4294967295;
-                }
-            }*/
-            //accelerator_unit(0b0001011); //reset accumulator for new block*
+    
             asm(".word 0b00000000000000000000000000001011");
         }
     }
