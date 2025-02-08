@@ -474,6 +474,91 @@ void matrix_mult_accelerated(int B, int M, int K, int N, int8_t sparse[M][K/2], 
     printf("\n"); //the prints here prevent from cva6 simulation*/
 }
 
+void example(int B, int M, int K, int N, int8_t sparse[M][K/2], int8_t dense[K][N], int8_t metadata[M][K/2]) {
+    int32_t final[8][8] = {{0},{0},{0},{0},{0},{0},{0},{0}}; 
+    int64_t row1, row2, row3, row4;
+
+    asm(".word 0b00000000000000000000000000001011"); //initialize the accelerator accumulators to zero
+
+    // Perform blocked multiplication row by row for blocks in row-major order.
+    for (int ii = 0; ii < M; ii += B) {            // Block rows of Y and X
+        for (int jj = 0; jj < N; jj += B) {        // Block columns of Z and X
+            for (int kk = 0; kk < K; kk += B) {    // Block columns of Y and rows of Z
+                /*row1 = (dense[kk][jj] << 24) | (dense[kk][jj+1] << 16) | (dense[kk][jj+2] << 8) | dense[kk][jj+3];
+                row2 = (dense[kk+1][jj] << 24) | (dense[kk+1][jj+1] << 16) | (dense[kk+1][jj+2] << 8) | dense[kk+1][jj+3];
+                row3 = (dense[kk+2][jj] << 24) | (dense[kk+2][jj+1] << 16) | (dense[kk+2][jj+2] << 8) | dense[kk+2][jj+3];
+                row4 = (dense[kk+3][jj] << 24) | (dense[kk+3][jj+1] << 16) | (dense[kk+3][jj+2] << 8) | dense[kk+3][jj+3];*/
+                row1 = *((int32_t *) (dense[kk] + jj));
+                row2 = *((int32_t *) (dense[kk+1] + jj));
+                row3 = *((int32_t *) (dense[kk+2] + jj));
+                row4 = *((int32_t *) (dense[kk+3] + jj));
+                
+                rs1 = ((row2 << 32) | row1); //rows 1 and 2 of dense go on rs1
+                rs2 = ((row4 << 32) | row3); //rows 3 and 4 of dense go on rs2
+                asm volatile(".insn r 0b0001011, 0b001, 0, x0, %1, %0" :: "r" (rs2), "r" (rs1));
+
+                /*row1 = (sparse[ii][kk/2] << 8)   | sparse[ii][kk/2+1];
+                row2 = (sparse[ii+1][kk/2] << 8) | sparse[ii+1][kk/2+1];
+                row3 = (sparse[ii+2][kk/2] << 8) | sparse[ii+2][kk/2+1];
+                row4 = (sparse[ii+3][kk/2] << 8) | sparse[ii+3][kk/2+1];*/
+                row1 = *((int16_t *) (sparse[ii] + kk/2));
+                row2 = *((int16_t *) (sparse[ii+1] + kk/2));
+                row3 = *((int16_t *) (sparse[ii+2] + kk/2));
+                row4 = *((int16_t *) (sparse[ii+3] + kk/2));
+                //rs1 = (((((row1 << 16) ^ row2) << 16) ^ row3) << 16) ^ row4; //the whole sparse matrix gets stored on rs1
+                rs1 = (((((row4 << 16) | row3) << 16) | row2) << 16) | row1;
+                
+                /*row1 = (metadata[ii][kk/2] << 8)   | metadata[ii][kk/2+1];
+                row2 = (metadata[ii+1][kk/2] << 8) | metadata[ii+1][kk/2+1];
+                row3 = (metadata[ii+2][kk/2] << 8) | metadata[ii+2][kk/2+1];
+                row4 = (metadata[ii+3][kk/2] << 8) | metadata[ii+3][kk/2+1];*/
+                row1 = *((int16_t *) (metadata[ii] + kk/2));
+                row2 = *((int16_t *) (metadata[ii+1] + kk/2));
+                row3 = *((int16_t *) (metadata[ii+2] + kk/2));
+                row4 = *((int16_t *) (metadata[ii+3] + kk/2));
+                //rs2 = (((((row1 << 16) ^ row2) << 16) ^ row3) << 16) ^ row4; //the whole metadata matrix gets stored on rs2
+                rs2 = (((((row4 << 16) | row3) << 16) | row2) << 16) | row1; 
+                asm volatile(".insn r 0b0001011, 0b010, 0b0000001, x0, %1, %0" :: "r" (rs2), "r" (rs1));
+            }
+            
+            //Get the first row of the accumulator and put it inside the first row of the corresponding final block
+            /*asm volatile(".insn r 0b0001011, 0b011, 0b0000000, %0, x0, x0" : "=r" (rd) :);
+            final[ii][jj] = rd >> 32;
+            final[ii][jj+1] = rd & 4294967295;
+            asm volatile(".insn r 0b0001011, 0b011, 0b0000010, %0, x0, x0" : "=r" (rd) :);
+            final[ii][jj+2] = rd >> 32;
+            final[ii][jj+3] = rd & 4294967295;
+
+            //Get the second row of the accumulator and put it inside the second row of the corresponding final block
+            asm volatile(".insn r 0b0001011, 0b011, 0b0000100, %0, x0, x0" : "=r" (rd) :);
+            final[ii+1][jj] = rd >> 32;
+            final[ii+1][jj+1] = rd & 4294967295;
+            asm volatile(".insn r 0b0001011, 0b011, 0b0000110, %0, x0, x0" : "=r" (rd) :);
+            final[ii+1][jj+2] = rd >> 32;
+            final[ii+1][jj+3] = rd & 4294967295;
+
+            //Get the third row of the accumulator and put it inside the third row of the corresponding final block
+            asm volatile(".insn r 0b0001011, 0b011, 0b0001000, %0, x0, x0" : "=r" (rd) :);
+            final[ii+2][jj] = rd >> 32;
+            final[ii+2][jj+1] = rd & 4294967295;
+            asm volatile(".insn r 0b0001011, 0b011, 0b0001010, %0, x0, x0" : "=r" (rd) :);
+            final[ii+2][jj+2] = rd >> 32;
+            final[ii+2][jj+3] = rd & 4294967295;
+
+            //Get the fourth row of the accumulator and put it inside the fourth row of the corresponding final block
+            asm volatile(".insn r 0b0001011, 0b011, 0b0001100, %0, x0, x0" : "=r" (rd) :);
+            final[ii+3][jj] = rd >> 32;
+            final[ii+3][jj+1] = rd & 4294967295;
+            asm volatile(".insn r 0b0001011, 0b011, 0b0001110, %0, x0, x0" : "=r" (rd) :);
+            final[ii+3][jj+2] = rd >> 32;
+            final[ii+3][jj+3] = rd & 4294967295;*/
+    
+            asm(".word 0b00000000000000000000000000001011");
+        }
+    }
+}
+
+
 int main(void) {
     int8_t sparse[8][4]={{1,4,5,5},{4,8,5,6},{5,7,9,4},{4,6,9,3},{6,5,8,3},{6,5,8,3},{6,5,8,3},{6,5,8,3}};  //Pressumed matrix is pre-compressed
     int8_t sparse_orig[8][8]={{1,0,4,0,0,5,5,0},{0,0,4,8,0,5,6,0},{5,0,0,7,0,0,9,4},{4,0,6,0,0,0,9,3},{0,6,0,5,8,0,3,0},{0,0,6,5,8,3,0,0},{0,6,5,0,0,8,3,0},{0,0,6,5,0,8,3,0}};  //Pressumed matrix is not pre-compressed
@@ -488,7 +573,8 @@ int main(void) {
 
     //matrix_mult(B,SPARSE_ROWS,SPARSE_COLS,DENSE_COLS,sparse_matrix,dense_matrix);
     //remove_zeros(sparse_matrix);
-    matrix_mult_accelerated(B,M,K,N,sparse,dense,metadata);
+    //matrix_mult_accelerated(B,M,K,N,sparse,dense,metadata);
+    example(B,M,K,N,sparse,dense,metadata);
     //matrix_mult_accelerated(B,SPARSE_ROWS,SPARSE_COLS,DENSE_COLS,sparse_matrix,dense_matrix,metadata_matrix);
 
     return 0;
