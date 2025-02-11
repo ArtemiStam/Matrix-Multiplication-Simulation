@@ -335,7 +335,13 @@ int main(void) {
     int8_t metadata[8][4] = {{0,2,1,2},{2,3,1,2},{0,3,2,3},{0,2,2,3},{1,3,0,2},{2,3,0,1},{1,2,1,2},{2,3,1,2}};
     //int32_t final[8][8] = {{0},{0},{0},{0},{0},{0},{0},{0}}, instr, final_test[8][8] = {{33,60,75,90,84,111,93,45},{41,92,115,138,100,175,157,69},{49,120,129,158,62,200,196,95},{52,103,113,138,59,170,155,81},{106,158,124,160,86,179,162,136},{88,128,118,148,122,167,141,106},{84,118,116,144,140,163,131,96},{50,88,110,132,128,162,134,66}};
     int B=4, M=8, K=8, N=8; //B is the block dimensions, M is the num of sparse matrix rows, K is the num of sparse columns(un-compressed) and dense columns, N is the num of dense columns.
-    
+    /*int64_t x;
+    int32_t a1, a2;
+    x = 0x00001f5effffdc3c;   
+    a1 = x >> 32;
+    a2 = x & 4294967295;*/
+
+    printf("%x %x\n", a1, a2);
     //matrix_mult(B,M,K,N,sparse,dense,metadata);
     matrix_mult_accelerated(B,M,K,N,sparse,dense,metadata);
 
