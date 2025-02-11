@@ -18,9 +18,6 @@ int32_t ACC[4][4];
 int8_t compressed_sparse_matrix[SPARSE_ROWS][SPARSE_COLS / 2];
 int64_t rs1, rs2, rd;
 
-//inline uint64_t read_cycle(void);
-//inline uint64_t read_instret(void);
-
 uint64_t read_cycle(void) {
     uint64_t cycles;
     asm volatile ("csrr %0, mcycle" : "=r" (cycles));
@@ -75,6 +72,7 @@ void load_sparse_matrix(int8_t sparse[4][2], int8_t metadata[4][2], int rs1, int
     }
 }
 
+/*Software emulation of the sparse matrix acceleration unit*/
 void accelerator_unit(int32_t instr) {
     int8_t opcode, rs1, rs2, rd, funct3, funct7, i;
     int64_t wr_back_data;
@@ -194,6 +192,7 @@ void print_matrix(int **matrix, int rows, int cols) {
     printf("\n");
 }
 
+/*Removes zero values from a sparse matrix*/
 void remove_zeros(int8_t sparse[SPARSE_ROWS][SPARSE_COLS], int8_t metadata[SPARSE_ROWS][SPARSE_COLS/2]) {
     for (int i = 0; i < SPARSE_ROWS; i++) {
         for (int j = 0; j < SPARSE_COLS/2; j++) {
@@ -212,6 +211,7 @@ void remove_zeros(int8_t sparse[SPARSE_ROWS][SPARSE_COLS], int8_t metadata[SPARS
     printf("\n"); //the prints here prevent from cva6 simulation
 }
 
+/*Compresses a sparse matrix with 2:4(50%) sparsity pattern based on the metadata values*/
 void compress_sparse_matrix(int8_t sparse_matrix[SPARSE_ROWS][SPARSE_COLS], int8_t metadata_matrix[SPARSE_ROWS][METADATA_COLS]) {
     int group_start, index_within_group, actual_index;
     
@@ -243,7 +243,7 @@ void matrix_mult_accelerated_before_optimizations(int B, int M, int K, int N, in
     asm(".word 0b00000000000000000000000000001011"); //initialize the accelerator accumulators to zero
 
     // Perform blocked multiplication row by row for blocks in row-major order.
-    /*for (int ii = 0; ii < M; ii += B) {            // Block rows of Y and X
+    for (int ii = 0; ii < M; ii += B) {            // Block rows of Y and X
         for (int jj = 0; jj < N; jj += B) {        // Block columns of Z and X
             for (int kk = 0; kk < K; kk += B) {    // Block columns of Y and rows of Z
                 row1 = (dense[kk][jj] << 24) | (dense[kk][jj+1] << 16) | (dense[kk][jj+2] << 8) | dense[kk][jj+3];
@@ -303,19 +303,10 @@ void matrix_mult_accelerated_before_optimizations(int B, int M, int K, int N, in
     
             asm(".word 0b00000000000000000000000000001011");
         }
-    }*/
-
-    /*for (int i = 0; i < 8; i++)
-    {
-        for (int j = 0; j < 8; j++)
-        {
-            printf("%6.2d ", final[i][j]); //the prints here prevent from cva6 simulation
-        }
-        printf("\n"); //the prints here prevent from cva6 simulation
     }
-    printf("\n"); //the prints here prevent from cva6 simulation*/
 }
 
+/*Software emulation of the sparse matrix accelerator*/
 void matrix_mult_emul(int B, int M, int K, int N, int8_t sparse[M][K/2], int8_t dense[K][N], int8_t metadata[M][K/2]) {
     int rs1, rs2, rd;
     int32_t final[8][8], instr; 
@@ -382,6 +373,7 @@ void matrix_mult_emul(int B, int M, int K, int N, int8_t sparse[M][K/2], int8_t 
     printf("\n"); //the prints here prevent from cva6 simulation*/
 }
 
+/*Takes an already compressed sparse matrix and uses the sparse matrix accelerator (for every system big/little endian) without optimization*/
 void matrix_mult_emul_accelerated(int B, int M, int K, int N, int8_t sparse[M][K/2], int8_t dense[K][N], int8_t metadata[M][K/2]) {
     int rs1, rs2, rd;
     int32_t final[8][8] = {{0},{0},{0},{0},{0},{0},{0},{0}}; 
@@ -390,7 +382,7 @@ void matrix_mult_emul_accelerated(int B, int M, int K, int N, int8_t sparse[M][K
     asm(".word 0b00000000000000000000000000001011"); //initialize the accelerator accumulators to zero
 
     // Perform blocked multiplication row by row for blocks in row-major order.
-    /*for (int ii = 0; ii < M; ii += B) {            // Block rows of Y and X
+    for (int ii = 0; ii < M; ii += B) {            // Block rows of Y and X
         for (int jj = 0; jj < N; jj += B) {        // Block columns of Z and X
             for (int kk = 0; kk < K; kk += B) {    // Block columns of Y and rows of Z
                 rs1 = 10;
@@ -456,19 +448,10 @@ void matrix_mult_emul_accelerated(int B, int M, int K, int N, int8_t sparse[M][K
     
             asm(".word 0b00000000000000000000000000001011");
         }
-    }*/
-
-    /*for (int i = 0; i < 8; i++)
-    {
-        for (int j = 0; j < 8; j++)
-        {
-            printf("%6.2d ", final[i][j]); //the prints here prevent from cva6 simulation
-        }
-        printf("\n"); //the prints here prevent from cva6 simulation
     }
-    printf("\n"); //the prints here prevent from cva6 simulation*/
 }
 
+/*The standard matrix multiplication algorithm using blocking of 4x4 sparse/dense blocks*/
 void matrix_mult(int B, int M, int K, int N, int8_t sparse[M][K], int8_t dense[K][N]) {
     int32_t final[SPARSE_ROWS][DENSE_COLS], result; 
 
@@ -508,6 +491,7 @@ void matrix_mult(int B, int M, int K, int N, int8_t sparse[M][K], int8_t dense[K
     */
 }
 
+/*The matrix multipliction with optimizations using the sparse matrix accelerator*/
 void matrix_mult_accelerated(int B, int M, int K, int N, int8_t sparse[M][K], int8_t dense[K][N], int8_t metadata[M][K/2]) {
     int32_t final[SPARSE_ROWS][DENSE_COLS]; 
     int64_t row1, row2, row3, row4;
@@ -526,7 +510,6 @@ void matrix_mult_accelerated(int B, int M, int K, int N, int8_t sparse[M][K], in
                 
                 rs1 = ((row2 << 32) | row1); //rows 1 and 2 of dense go on rs1
                 rs2 = ((row4 << 32) | row3); //rows 3 and 4 of dense go on rs2
-                //printf("rs1: %lx rs2: %lx\n", rs1, rs2);
                 asm volatile(".insn r 0b0001011, 0b001, 0, x0, %1, %0" :: "r" (rs2), "r" (rs1));
 
                 row1 = *((uint16_t *) (compressed_sparse_matrix[ii] + kk/2));
@@ -583,33 +566,30 @@ void matrix_mult_accelerated(int B, int M, int K, int N, int8_t sparse[M][K], in
 
 
 int main(void) {
-    //int8_t sparse[8][4]={{1,4,5,5},{4,8,5,6},{5,7,9,4},{4,6,9,3},{6,5,8,3},{6,5,8,3},{6,5,8,3},{6,5,8,3}};  //Pressumed matrix is pre-compressed
-    //int8_t sparse_orig[8][8]={{1,0,4,0,0,5,5,0},{0,0,4,8,0,5,6,0},{5,0,0,7,0,0,9,4},{4,0,6,0,0,0,9,3},{0,6,0,5,8,0,3,0},{0,0,6,5,8,3,0,0},{0,6,5,0,0,8,3,0},{0,0,6,5,0,8,3,0}};  //Pressumed matrix is not pre-compressed
-    //int8_t dense[8][8]={{1,4,5,6,2,8,8,3},{7,9,6,8,5,8,7,8},{3,4,5,6,8,7,5,3},{1,4,5,6,2,8,8,3},{7,9,6,8,5,8,7,8},{3,4,5,6,8,7,5,3},{1,4,5,6,2,8,8,3},{7,9,6,8,5,8,7,8}};
-    //int8_t metadata[8][4] = {{0,2,1,2},{2,3,1,2},{0,3,2,3},{0,2,2,3},{1,3,0,2},{2,3,0,1},{1,2,1,2},{2,3,1,2}};
-    //int32_t final[8][8] = {{0},{0},{0},{0},{0},{0},{0},{0}}, instr, final_test[8][8] = {{33,60,75,90,84,111,93,45},{41,92,115,138,100,175,157,69},{49,120,129,158,62,200,196,95},{52,103,113,138,59,170,155,81},{106,158,124,160,86,179,162,136},{88,128,118,148,122,167,141,106},{84,118,116,144,140,163,131,96},{50,88,110,132,128,162,134,66}};
+    int8_t sparse[8][4]={{1,4,5,5},{4,8,5,6},{5,7,9,4},{4,6,9,3},{6,5,8,3},{6,5,8,3},{6,5,8,3},{6,5,8,3}};  //Pressumed matrix is pre-compressed
+    int8_t sparse_orig[8][8]={{1,0,4,0,0,5,5,0},{0,0,4,8,0,5,6,0},{5,0,0,7,0,0,9,4},{4,0,6,0,0,0,9,3},{0,6,0,5,8,0,3,0},{0,0,6,5,8,3,0,0},{0,6,5,0,0,8,3,0},{0,0,6,5,0,8,3,0}};  //Pressumed matrix is not pre-compressed
+    int8_t dense[8][8]={{1,4,5,6,2,8,8,3},{7,9,6,8,5,8,7,8},{3,4,5,6,8,7,5,3},{1,4,5,6,2,8,8,3},{7,9,6,8,5,8,7,8},{3,4,5,6,8,7,5,3},{1,4,5,6,2,8,8,3},{7,9,6,8,5,8,7,8}};
+    int8_t metadata[8][4] = {{0,2,1,2},{2,3,1,2},{0,3,2,3},{0,2,2,3},{1,3,0,2},{2,3,0,1},{1,2,1,2},{2,3,1,2}};
     int B=4, M=8, K=8, N=8; //B is the block dimensions, M is the num of sparse matrix rows, K is the num of sparse columns(un-compressed) and dense columns, N is the num of dense columns.
-    uint64_t i0,i1;
-    /*int32_t *instr;
-    instr = (int32_t *) dense[0];
-    printf("%x", *instr);*/
+    uint64_t t0, t1, i0, i1;
 
-    //matrix_mult(B,SPARSE_ROWS,SPARSE_COLS,DENSE_COLS,sparse_matrix,dense_matrix);
-    
-    //compress_sparse_matrix(sparse_matrix,metadata_matrix);
-    //matrix_mult_accelerated(B,M,K,N,sparse,dense,metadata);
-    //example(B,M,K,N,sparse,dense,metadata);
+    /*matrix_mult_emul(B,M,K,N,sparse,dense,metadata);
+    matrix_mult_emul_accelerated(B,M,K,N,sparse,dense,metadata);
+    matrix_mult_accelerated_before_optimizations(B,M,K,N,sparse,dense,metadata);*/
 
-    i0 = read_cycle();
-    matrix_mult_accelerated(B,SPARSE_ROWS,SPARSE_COLS,DENSE_COLS,sparse_matrix,dense_matrix,metadata_matrix);
-    i1 = read_cycle();
-    printf("Ac = %ld\n", i1-i0);
-
-    i0 = read_cycle();
+    i0 = read_instret();
+    t0 = read_cycle();
     matrix_mult(B,SPARSE_ROWS,SPARSE_COLS,DENSE_COLS,sparse_matrix,dense_matrix);
-    i1 = read_cycle();
-    printf("Cy = %ld\n", i1-i0);
-    //matrix_mult_accelerated(B,SPARSE_ROWS,SPARSE_COLS,DENSE_COLS,sparse_matrix,dense_matrix,metadata_matrix);
+    t1 = read_cycle();
+    i1 = read_instret();
+    printf("Cy: %ld In: %ld\n", t1-t0, i1-i0);
+
+    i0 = read_instret();
+    t0 = read_cycle();
+    matrix_mult_accelerated(B,SPARSE_ROWS,SPARSE_COLS,DENSE_COLS,sparse_matrix,dense_matrix,metadata_matrix);
+    t1 = read_cycle();
+    i1 = read_instret();
+    printf("Acc Cy: %ld In: %ld\n", t1-t0, i1-i0);
 
     return 0;
 }
