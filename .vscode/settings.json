@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "cvxif_macros.h": "c",
+        "limits": "c"
+    }
+}

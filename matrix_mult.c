@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
-#include "dataset2.h"
+#include "dataset59.h"
 
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 #define OPCODE 11     //opcode: 0001011
@@ -16,6 +16,7 @@ int64_t REG_FILE[32]; //Memory elements accessed from both the accelerator and t
 int8_t sparse[4][2], meta_data[4][2], dense[4][4];
 int32_t ACC[4][4];
 int8_t compressed_sparse_matrix[SPARSE_ROWS][SPARSE_COLS / 2];
+int32_t final_matrix[SPARSE_ROWS][DENSE_COLS];
 int64_t rs1, rs2, rd;
 
 uint64_t read_cycle(void) {
@@ -240,10 +241,10 @@ void matrix_mult_accelerated_before_optimizations(int B, int M, int K, int N, in
     int32_t final[8][8] = {{0},{0},{0},{0},{0},{0},{0},{0}}; 
     int64_t row1, row2, row3, row4;
 
-    asm(".word 0b00000000000000000000000000001011"); //initialize the accelerator accumulators to zero
+    //asm(".word 0b00000000000000000000000000001011"); //initialize the accelerator accumulators to zero
 
     // Perform blocked multiplication row by row for blocks in row-major order.
-    for (int ii = 0; ii < M; ii += B) {            // Block rows of Y and X
+    /*for (int ii = 0; ii < M; ii += B) {            // Block rows of Y and X
         for (int jj = 0; jj < N; jj += B) {        // Block columns of Z and X
             for (int kk = 0; kk < K; kk += B) {    // Block columns of Y and rows of Z
                 row1 = (dense[kk][jj] << 24) | (dense[kk][jj+1] << 16) | (dense[kk][jj+2] << 8) | dense[kk][jj+3];
@@ -303,7 +304,7 @@ void matrix_mult_accelerated_before_optimizations(int B, int M, int K, int N, in
     
             asm(".word 0b00000000000000000000000000001011");
         }
-    }
+    }*/
 }
 
 /*Software emulation of the sparse matrix accelerator*/
@@ -379,10 +380,10 @@ void matrix_mult_emul_accelerated(int B, int M, int K, int N, int8_t sparse[M][K
     int32_t final[8][8] = {{0},{0},{0},{0},{0},{0},{0},{0}}; 
     int64_t row1, row2, row3, row4;
 
-    asm(".word 0b00000000000000000000000000001011"); //initialize the accelerator accumulators to zero
+    //asm(".word 0b00000000000000000000000000001011"); //initialize the accelerator accumulators to zero
 
     // Perform blocked multiplication row by row for blocks in row-major order.
-    for (int ii = 0; ii < M; ii += B) {            // Block rows of Y and X
+    /*for (int ii = 0; ii < M; ii += B) {            // Block rows of Y and X
         for (int jj = 0; jj < N; jj += B) {        // Block columns of Z and X
             for (int kk = 0; kk < K; kk += B) {    // Block columns of Y and rows of Z
                 rs1 = 10;
@@ -448,19 +449,19 @@ void matrix_mult_emul_accelerated(int B, int M, int K, int N, int8_t sparse[M][K
     
             asm(".word 0b00000000000000000000000000001011");
         }
-    }
+    }*/
 }
 
 /*The standard matrix multiplication algorithm using blocking of 4x4 sparse/dense blocks*/
 void matrix_mult(int B, int M, int K, int N, int8_t sparse[M][K], int8_t dense[K][N]) {
-    int32_t final[SPARSE_ROWS][DENSE_COLS], result; 
+    int32_t result; 
 
-    for (int a = 0; a < M; a++) {
+    /*for (int a = 0; a < M; a++) {
         for (int b = 0; b < N; b++)
         {
             final[a][b] = 0;
         }
-    }
+    }*/
 
     // Perform blocked multiplication row by row for blocks in row-major order.
     for (int ii = 0; ii < M; ii += B) {            // Block rows of Y and X
@@ -472,7 +473,7 @@ void matrix_mult(int B, int M, int K, int N, int8_t sparse[M][K], int8_t dense[K
                         for (int k = kk; k < min(kk + B, K); k++) {  // Overlapping blocks
                             result += (int32_t) sparse[i][k] * dense[k][j];  // Dot product for the block
                         }
-                        final[i][j] += result;
+                        final_matrix[i][j] += result;
                     }
                 }
             }
@@ -483,12 +484,13 @@ void matrix_mult(int B, int M, int K, int N, int8_t sparse[M][K], int8_t dense[K
     {
         for (int j = 0; j < N; j++)
         {
-            printf("%6.2d ", final[i][j]); //the prints here prevent from cva6 simulation
+            printf("%6.2d ", final_matrix[i][j]); //the prints here prevent from cva6 simulation
         }
         printf("\n"); //the prints here prevent from cva6 simulation
     }
     printf("\n"); //the prints here prevent from cva6 simulation
     */
+    
 }
 
 /*The matrix multipliction with optimizations using the sparse matrix accelerator*/
@@ -496,7 +498,7 @@ void matrix_mult_accelerated(int B, int M, int K, int N, int8_t sparse[M][K], in
     int32_t final[SPARSE_ROWS][DENSE_COLS]; 
     int64_t row1, row2, row3, row4;
 
-    compress_sparse_matrix(sparse,metadata);
+    //compress_sparse_matrix(sparse,metadata);
     asm(".word 0b00000000000000000000000000001011"); //initialize the accelerator accumulators to zero
 
     // Perform blocked multiplication row by row for blocks in row-major order.
@@ -577,6 +579,13 @@ int main(void) {
     matrix_mult_emul_accelerated(B,M,K,N,sparse,dense,metadata);
     matrix_mult_accelerated_before_optimizations(B,M,K,N,sparse,dense,metadata);*/
 
+    for (int i = 0; i < SPARSE_ROWS; i++) {
+        for (int j = 0; j < DENSE_COLS; j++)
+        {
+            final_matrix[i][j] = 0;
+        }
+    }
+
     i0 = read_instret();
     t0 = read_cycle();
     matrix_mult(B,SPARSE_ROWS,SPARSE_COLS,DENSE_COLS,sparse_matrix,dense_matrix);
@@ -584,12 +593,14 @@ int main(void) {
     i1 = read_instret();
     printf("Cy: %ld In: %ld\n", t1-t0, i1-i0);
 
+    
+    compress_sparse_matrix(sparse_matrix,metadata_matrix);
     i0 = read_instret();
     t0 = read_cycle();
     matrix_mult_accelerated(B,SPARSE_ROWS,SPARSE_COLS,DENSE_COLS,sparse_matrix,dense_matrix,metadata_matrix);
     t1 = read_cycle();
     i1 = read_instret();
-    printf("Acc Cy: %ld In: %ld\n", t1-t0, i1-i0);
-
+    printf("Ac Cy: %ld In: %ld\n", t1-t0, i1-i0);
+    
     return 0;
 }
